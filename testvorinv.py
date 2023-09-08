@@ -28,16 +28,16 @@ class vortdiv_inversion:
         self.vchi = None
         self.outerboundingbox = outerboundingbox
         self.innerboundingbox = innerboundingbox
-        self.upperlatitude = self.innerboundingbox.getUpperLeftPoint().getLatitude()
-        self.lowerlatitude = self.innerboundingbox.getLowerLeftPoint().getLatitude()
-        self.upperlongitude = self.innerboundingbox.getUpperRightPoint().getLongitude()
-        self.lowerlongitude = self.innerboundingbox.getLowerLeftPoint().getLongitude()
+        self.upper_latitude = self.innerboundingbox.get_upper_left_point().get_latitude()
+        self.lower_latitude = self.innerboundingbox.get_lower_left_point().get_latitude()
+        self.upper_longitude = self.innerboundingbox.get_upper_right_point().get_longitude()
+        self.lower_longitude = self.innerboundingbox.get_lower_left_point().get_longitude()
 
-        self.oupperlatitude = self.outerboundingbox.getUpperLeftPoint().getLatitude()
-        self.olowerlatitude = self.outerboundingbox.getLowerLeftPoint().getLatitude()
+        self.oupper_latitude = self.outerboundingbox.get_upper_left_point().get_latitude()
+        self.olower_latitude = self.outerboundingbox.get_lower_left_point().get_latitude()
 
-        self.oupperlongitude = self.outerboundingbox.getUpperRightPoint().getLongitude()
-        self.olowerlongitude = self.outerboundingbox.getLowerLeftPoint().getLongitude()
+        self.oupper_longitude = self.outerboundingbox.get_upper_right_point().get_longitude()
+        self.olower_longitude = self.outerboundingbox.get_lower_left_point().get_longitude()
 
         self.x_ll = None
         self.x_ur = None
@@ -63,12 +63,12 @@ class vortdiv_inversion:
         
     def vorticity_mask(self):
 
-        mask = ((self.vort850.latitude <= self.upperlatitude) & (self.vort850.latitude >= self.lowerlatitude) & (self.vort850.longitude <= self.upperlongitude) & (self.vort850.longitude >= self.lowerlongitude))
+        mask = ((self.vort850.latitude <= self.upper_latitude) & (self.vort850.latitude >= self.lower_latitude) & (self.vort850.longitude <= self.upper_longitude) & (self.vort850.longitude >= self.lower_longitude))
         self.vortmask = self.vort850.where(mask)
         self.vortmask = self.vortmask.fillna(0.0)
         
     def divergence_mask(self):
-        mask = ((self.div850.latitude <= self.upperlatitude) & (self.div850.latitude >= self.lowerlatitude) & (self.div850.longitude <= self.upperlongitude) & (self.div850.longitude >= self.lowerlongitude))
+        mask = ((self.div850.latitude <= self.upper_latitude) & (self.div850.latitude >= self.lower_latitude) & (self.div850.longitude <= self.upper_longitude) & (self.div850.longitude >= self.lower_longitude))
         self.divmask = self.div850.where(mask)
         self.divmask = self.div850.fillna(0.0)
 
@@ -85,19 +85,19 @@ class vortdiv_inversion:
         self.vchi = xr.zeros_like(self.divmask)
         
     def define_bounding_box_indices(self):
-        self.x_ll = list(self.vortmask.longitude.values).index(self.lowerlongitude)
-        self.x_ur = list(self.vortmask.longitude.values).index(self.upperlongitude)
-        self.y_ll = list(self.vortmask.latitude.values).index(self.lowerlatitude)
-        self.y_ur = list(self.vortmask.latitude.values).index(self.upperlatitude)
+        self.x_ll = list(self.vortmask.longitude.values).index(self.lower_longitude)
+        self.x_ur = list(self.vortmask.longitude.values).index(self.upper_longitude)
+        self.y_ll = list(self.vortmask.latitude.values).index(self.lower_latitude)
+        self.y_ur = list(self.vortmask.latitude.values).index(self.upper_latitude)
 
         
-        self.x_ll_subset = list(self.vortmask.longitude.values).index(self.olowerlongitude)
-        self.x_ur_subset = list(self.vortmask.longitude.values).index(self.oupperlongitude)
+        self.x_ll_subset = list(self.vortmask.longitude.values).index(self.olower_longitude)
+        self.x_ur_subset = list(self.vortmask.longitude.values).index(self.oupper_longitude)
 
 
 
-        self.y_ll_subset = list(self.vortmask.latitude.values).index(self.olowerlatitude)
-        self.y_ur_subset = list(self.vortmask.latitude.values).index(self.oupperlatitude)
+        self.y_ll_subset = list(self.vortmask.latitude.values).index(self.olower_latitude)
+        self.y_ur_subset = list(self.vortmask.latitude.values).index(self.oupper_latitude)
 
     def calculate_rotational_wind_from_inversion(self):
 
