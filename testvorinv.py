@@ -50,41 +50,41 @@ class vortdiv_inversion:
         self.y_ur_subset = None
 
         
-    def setData(self):
+    def set_data(self):
         self.u = self.u850.u
         self.v = self.v850.v
 
-    def calculateVorticity(self):
+    def calculate_vorticity(self):
         self.vort850 = mpcalc.vorticity(self.u,self.v)
         
-    def calculateDivergence(self):
+    def calculate_divergence(self):
 
         self.div850 = mpcalc.divergence(self.u,self.v)
         
-    def vorticityMask(self):
+    def vorticity_mask(self):
 
         mask = ((self.vort850.latitude <= self.upperlatitude) & (self.vort850.latitude >= self.lowerlatitude) & (self.vort850.longitude <= self.upperlongitude) & (self.vort850.longitude >= self.lowerlongitude))
         self.vortmask = self.vort850.where(mask)
         self.vortmask = self.vortmask.fillna(0.0)
         
-    def divergenceMask(self):
+    def divergence_mask(self):
         mask = ((self.div850.latitude <= self.upperlatitude) & (self.div850.latitude >= self.lowerlatitude) & (self.div850.longitude <= self.upperlongitude) & (self.div850.longitude >= self.lowerlongitude))
         self.divmask = self.div850.where(mask)
         self.divmask = self.div850.fillna(0.0)
 
         
-    def calculateDistanceMatrix(self):
+    def calculate_distance_matrix(self):
         self.dx, self.dy = mpcalc.lat_lon_grid_deltas(self.vortmask.longitude, self.vortmask.latitude)
         self.dx = np.abs(self.dx)
         self.dy = np.abs(self.dy)
 
-    def initiailizeRotationalAndIrrotationalWind(self):
+    def initiailize_rotational_and_irrotational_wind(self):
         self.upsi = xr.zeros_like(self.vortmask)
         self.vpsi = xr.zeros_like(self.vortmask)
         self.uchi = xr.zeros_like(self.divmask)
         self.vchi = xr.zeros_like(self.divmask)
         
-    def defineBoundingBoxIndices(self):
+    def define_bounding_box_indices(self):
         self.x_ll = list(self.vortmask.longitude.values).index(self.lowerlongitude)
         self.x_ur = list(self.vortmask.longitude.values).index(self.upperlongitude)
         self.y_ll = list(self.vortmask.latitude.values).index(self.lowerlatitude)
@@ -99,7 +99,7 @@ class vortdiv_inversion:
         self.y_ll_subset = list(self.vortmask.latitude.values).index(self.olowerlatitude)
         self.y_ur_subset = list(self.vortmask.latitude.values).index(self.oupperlatitude)
 
-    def calculateRotationalWindFromInversion(self):
+    def calculate_rotational_wind_from_inversion(self):
 
         for i in range(self.x_ll_subset, self.x_ur_subset):
             for j in range(self.y_ur_subset, self.y_ll_subset): 
@@ -123,7 +123,7 @@ class vortdiv_inversion:
         self.vpsi[:,:] = (1/(2*np.pi)) * self.vpsi[:,:]
 
 
-    def calculateDivergentWindFromInversion(self):
+    def calculate_divergent_wind_from_inversion(self):
         
         for i in range(x_ll_subset, x_ur_subset):
             for j in range(y_ur_subset, y_ll_subset): 
