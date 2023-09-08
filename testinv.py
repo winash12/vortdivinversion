@@ -13,8 +13,8 @@ def main():
     u850,v850=readFile()
 
     outer_ll_point = point(0.,180.)
-    outer_ul_point = point(30.,220.)
-    outer_lr_point = point(0.,180.)
+    outer_ul_point = point(30.,180.)
+    outer_lr_point = point(0.,220.)
     outer_ur_point = point(30.,220.)
     listOfPoints = []
     listOfPoints.append(outer_ll_point)
@@ -32,8 +32,8 @@ def main():
     listOfPoints2.append(inner_lr_point)
     listOfPoints2.append(inner_ur_point)
 
-    innerBoundingBox = bounding_box(listOfPoints)
-    outerBoundingBox = bounding_box(listOfPoints2)
+    innerBoundingBox = bounding_box(listOfPoints2)
+    outerBoundingBox = bounding_box(listOfPoints)
     vortdivinv = vortdiv_inversion(u850,v850,outerBoundingBox,innerBoundingBox)
     vortdivinv.setData()
     vortdivinv.calculateVorticity()
@@ -43,7 +43,7 @@ def main():
     vortdivinv.calculateDistanceMatrix()
     vortdivinv. initiailizeRotationalAndIrrotationalWind()
     vortdivinv.defineBoundingBoxIndices()
-    
+    vortdivinv.calculateRotationalWindFromInversion()
 def readFile():
 
     if (not os.path.isfile('gfs.t12z.pgrb2.0p50.f000')):

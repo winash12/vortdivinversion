@@ -5,8 +5,8 @@ class bounding_box:
     def __init__(self,points):
         
         self.lowerleft = points[0]
-        self.lowerright = points[1]
-        self.upperleft = points[2]
+        self.upperleft = points[1]
+        self.lowerright = points[2]
         self.upperright = points[3]
 
     def getUpperRightPoint(self):
