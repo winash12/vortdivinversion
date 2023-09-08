@@ -5,7 +5,7 @@ from botocore.config import Config
 import sys
 import os.path
 import xarray as xr
-from BoundingBox import bounding_box,point
+from bounding_box import bounding_box,point
 from testvorinv import vortdiv_inversion
 
 def main():
