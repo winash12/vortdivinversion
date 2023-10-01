@@ -40,7 +40,7 @@ for i in range(x_ll_subset, x_ur_subset):
 
 #scalar code
 
-xdiff1 = np.empty((y,x))
+xdiff1 = np.zeros((y,x))
 
 for i in range(x_ll_subset, x_ur_subset):
     for j in range(y_ur_subset, y_ll_subset): 
