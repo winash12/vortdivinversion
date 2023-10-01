@@ -49,7 +49,12 @@ for i in range(x_ll_subset, x_ur_subset):
             y11 = 0
             for y1 in range(y_ur, y_ll):
 
-                xdiff1[y11,x11] = (i-x1)*dx[y1,x1]
+                outer_point = [i,j]
+
+                inner_point = [x1,y1]
+
+                if inner_point != outer_point:
+                    xdiff1[y11,x11] = (i-x1)*dx[y1,x1]
 
                 y11 += 1
             x11 += 1
