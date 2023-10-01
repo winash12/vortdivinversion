@@ -37,11 +37,12 @@ for i in range(x_ll_subset, x_ur_subset):
 
         iindex[:,:] = i
         xdiff = (iindex-xindex)*dx[y_ur:y_ll,x_ll:x_ur]
-        clist.append(xdiff)
+    clist.append(xdiff)
 
 cxdiff = np.concatenate(clist,axis=0)
 
 print(cxdiff.shape)
+
 
 #scalar code
 
@@ -63,7 +64,7 @@ for i in range(x_ll_subset, x_ur_subset):
 
                 y11 += 1
             x11 += 1
-        clist1.append(xdiff1)
+    clist1.append(xdiff1)
 
 cxdiff1 = np.concatenate(clist1,axis=0)
 print(cxdiff1.shape)
