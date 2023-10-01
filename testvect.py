@@ -30,18 +30,23 @@ iindex = np.zeros((y,x),dtype=np.int32)
 
 #vectorized code
 
+clist = []
 for i in range(x_ll_subset, x_ur_subset):
 
     for j in range(y_ur_subset, y_ll_subset): 
 
         iindex[:,:] = i
         xdiff = (iindex-xindex)*dx[y_ur:y_ll,x_ll:x_ur]
-    break
+        clist.append(xdiff)
+
+cxdiff = np.concatenate(clist,axis=0)
+
+print(cxdiff.shape)
 
 #scalar code
 
 xdiff1 = np.zeros((y,x))
-
+clist1 = []
 for i in range(x_ll_subset, x_ur_subset):
     for j in range(y_ur_subset, y_ll_subset): 
         x11 = 0
@@ -58,7 +63,8 @@ for i in range(x_ll_subset, x_ur_subset):
 
                 y11 += 1
             x11 += 1
-        break
-    break
+        clist1.append(xdiff1)
 
+cxdiff1 = np.concatenate(clist1,axis=0)
+print(cxdiff1.shape)
 print(np.array_equal(xdiff,xdiff1))
