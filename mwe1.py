@@ -12,15 +12,16 @@ import cartopy.crs as crs
 from cartopy.feature import NaturalEarthFeature
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 import sys
-
-if (not os.path.isfile('gfs.t12z.pgrb2.0p50.f000')):
+import time 
+if (not os.path.isfile('gfs.t12z.pgrb2.0p25.f000')):
 
     client = boto3.client('s3', config=Config(signature_version=UNSIGNED))
     client.download_file('noaa-gfs-bdp-pds', 'gfs.20230824/12/atmos/gfs.t12z.pgrb2.0p25.f000', 'gfs.t12z.pgrb2.0p25.f000')
 
-u850 = xr.open_dataset('gfs.t12z.pgrb2.0p50.f000', engine='cfgrib',backend_kwargs={'filter_by_keys':{'typeOfLevel': 'isobaricInhPa', 'shortName': 'u', 'level': 850}})
+u850 = xr.open_dataset('gfs.t12z.pgrb2.0p25.f000', engine='cfgrib',backend_kwargs={'filter_by_keys':{'typeOfLevel': 'isobaricInhPa', 'shortName': 'u', 'level': 850}})
 u = u850.u
-v850 = xr.open_dataset('gfs.t12z.pgrb2.0p50.f000', engine='cfgrib', backend_kwargs={'filter_by_keys':{'typeOfLevel': 'isobaricInhPa', 'shortName': 'v', 'level': 850}})
+print(u.shape)
+v850 = xr.open_dataset('gfs.t12z.pgrb2.0p25.f000', engine='cfgrib', backend_kwargs={'filter_by_keys':{'typeOfLevel': 'isobaricInhPa', 'shortName': 'v', 'level': 850}})
 v = v850.v
 
 print(v.shape)
@@ -59,6 +60,8 @@ y_ur = list(vortmask.latitude.values).index(13.5)
 
 print(x_ll,x_ur,y_ll,y_ur)
 
+
+
 x_ll_subset = list(vortmask.longitude.values).index(180.0)
 x_ur_subset = list(vortmask.longitude.values).index(220.0)
 y_ll_subset = list(vortmask.latitude.values).index(0.0)
@@ -84,8 +87,8 @@ yindex = yindex.reshape((y,x),order='C')
 
 
 
-iindex = np.zeros((y,x),dtype=np.int)
-jindex = np.zeros((y,x),dtype=np.int)
+iindex = np.zeros((y,x),dtype=np.int32)
+jindex = np.zeros((y,x),dtype=np.int32)
 
 
 dx1 = dx.magnitude
@@ -94,6 +97,7 @@ dy1 = dy.magnitude
 
 vortmask1 = vortmask.values
 
+starttime = time.time()
 
 for i in range(x_ll_subset, x_ur_subset):
 
@@ -114,7 +118,9 @@ for i in range(x_ll_subset, x_ur_subset):
 upsi[:,:] = (1/(2*np.pi)) * upsi[:,:]
 vpsi[:,:] = (1/(2*np.pi)) * vpsi[:,:]
 
+endtime = time.time()
 
+print(endtime-starttime)
 
 print("done vectorizing")
 
