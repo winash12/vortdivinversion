@@ -17,10 +17,10 @@ if (not os.path.isfile('gfs.t18z.pgrb2.0p25.f000')):
 
     client = boto3.client('s3', config=Config(signature_version=UNSIGNED))
     client.download_file('noaa-gfs-bdp-pds', 'gfs.20231004/18/atmos/gfs.t18z.pgrb2.0p25.f000', 'gfs.t18z.pgrb2.0p25.f000')
-u850 = xr.open_dataset('gfs.t18z.pgrb2.0p25.f000', engine='cfgrib',backend_kwargs={'filter_by_keys':{'typeOfLevel': 'isobaricInhPa', 'shortName': 'u', 'level': 850}})
+u850 = xr.open_dataset('gfs.t18z.pgrb2.0p25.f000', engine='cfgrib',backend_kwargs={'filter_by_keys':{'typeOfLevel': 'isobaricInhPa', 'shortName': 'u', 'level': 200}})
 u = u850.u
 print(u.shape)
-v850 = xr.open_dataset('gfs.t18z.pgrb2.0p25.f000', engine='cfgrib', backend_kwargs={'filter_by_keys':{'typeOfLevel': 'isobaricInhPa', 'shortName': 'v', 'level': 850}})
+v850 = xr.open_dataset('gfs.t18z.pgrb2.0p25.f000', engine='cfgrib', backend_kwargs={'filter_by_keys':{'typeOfLevel': 'isobaricInhPa', 'shortName': 'v', 'level': 200}})
 v = v850.v
 
 print(v.shape)
@@ -156,7 +156,7 @@ gridlines.xformatter = LONGITUDE_FORMATTER
 gridlines.yformatter = LATITUDE_FORMATTER
 
 # Add a plot title, then show the image.
-plt.title("GFS 0-h 850 hPa non-divergent wind magnitude ($m s^{-1}$) due to tropical low at 1800 UTC 4 October 2023")
+plt.title("GFS 0-h 200 hPa non-divergent wind magnitude ($m s^{-1}$) due to tropical low at 1800 UTC 4 October 2023")
 plt.savefig('vectorized_version')
 plt.show()
 
