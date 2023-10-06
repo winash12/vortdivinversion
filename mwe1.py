@@ -74,18 +74,13 @@ x = np.abs(x_ll-x_ur)
 y = np.abs(y_ll-y_ur)
 
 
-wow = 0
-tot = x*y
-xindex = np.zeros((tot))
-yindex = np.zeros((tot))
-for xx in range(x_ll,x_ur):
-    for yy in range(y_ur,y_ll):
-        xindex[wow] = xx
-        yindex[wow] = yy
-        wow += 1
+xindex = np.linspace(x_ll,x_ur,num=x*y,endpoint=False,dtype=np.int32)
+yindex = np.linspace(y_ur,y_ll,num=y*x,endpoint=False,dtype=np.int32)
+
 
 xindex = xindex.reshape((y,x),order='F')
-yindex = yindex.reshape((y,x),order='F')
+yindex = yindex.reshape((y,x),order='C')
+
 
 
 
