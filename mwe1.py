@@ -16,7 +16,7 @@ import time
 if (not os.path.isfile('gfs.t12z.pgrb2.0p25.f000')):
 
     client = boto3.client('s3', config=Config(signature_version=UNSIGNED))
-    client.download_file('noaa-gfs-bdp-pds', 'gfs.20230824/12/atmos/gfs.t12z.pgrb2.0p25.f000', 'gfs.t12z.pgrb2.0p25.f000')
+    client.download_file('noaa-gfs-bdp-pds', 'gfs.20230809/12/atmos/gfs.t12z.pgrb2.0p25.f000', 'gfs.t12z.pgrb2.0p25.f000')
 
 u850 = xr.open_dataset('gfs.t12z.pgrb2.0p25.f000', engine='cfgrib',backend_kwargs={'filter_by_keys':{'typeOfLevel': 'isobaricInhPa', 'shortName': 'u', 'level': 850}})
 u = u850.u
@@ -67,6 +67,8 @@ x_ur_subset = list(vortmask.longitude.values).index(220.0)
 y_ll_subset = list(vortmask.latitude.values).index(0.0)
 y_ur_subset = list(vortmask.latitude.values).index(30.0)
 
+print(x_ll_subset,x_ur_subset,y_ll_subset,y_ur_subset)
+
 
 i = np.abs(x_ll_subset-x_ur_subset)
 j = np.abs(y_ll_subset-y_ur_subset)
@@ -85,8 +87,6 @@ xindex = xindex.reshape((y,x),order='F')
 yindex = yindex.reshape((y,x),order='C')
 
 
-
-
 iindex = np.zeros((y,x),dtype=np.int32)
 jindex = np.zeros((y,x),dtype=np.int32)
 
@@ -98,6 +98,7 @@ dy1 = dy.magnitude
 vortmask1 = vortmask.values
 
 starttime = time.time()
+
 
 for i in range(x_ll_subset, x_ur_subset):
 
@@ -147,8 +148,8 @@ ax.set_extent([-180.,-140.,0.,30.],crs=crs.PlateCarree())
 
 # Add latitude/longitude gridlines.
 gridlines = ax.gridlines(color="grey", linestyle="dotted", draw_labels=True)
-gridlines.xlabels_top = False
-gridlines.ylabels_right = False
+gridlines.top_labels = False
+gridlines.right_labels = False
 gridlines.xlocator = mticker.FixedLocator(np.arange(-180.,139.,5.))
 gridlines.ylocator = mticker.FixedLocator(np.arange(0.,31.,5.))
 gridlines.xlabel_style = {'size':12, 'color':'black'}
@@ -161,7 +162,7 @@ plt.title("GFS 0-h 850 hPa non-divergent wind magnitude ($m s^{-1}$) due to Dora
 plt.savefig('vectorized_version')
 plt.show()
 
-sys.exit()
+
 
         
 
