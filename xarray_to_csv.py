@@ -2,15 +2,8 @@ import os.path
 import xarray as xr
 import numpy as np
 import boto3
-import metpy.calc as mpcalc
 from botocore import UNSIGNED
 from botocore.config import Config
-import matplotlib.pyplot as plt
-from matplotlib.cm import get_cmap
-import matplotlib.ticker as mticker
-import cartopy.crs as crs
-from cartopy.feature import NaturalEarthFeature
-from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 import sys
 import time
 import pandas as pd
