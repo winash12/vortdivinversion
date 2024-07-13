@@ -47,7 +47,7 @@ def setUpData():
 
     vmask = mpcalc.bounding_box_mask(v1, -1., 1, -1., 1.)
 
-    vortmask = mpcalc.bounding_box_mask(vort, 1., 1., 1., 1.)
+    vortmask = mpcalc.bounding_box_mask(vort, -1., 1., -1., 1.)
 
     i_bb_indices = mpcalc.find_bounding_box_indices(vortmask, -1., 1., -1., 1.)
     
