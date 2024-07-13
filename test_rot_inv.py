@@ -18,8 +18,8 @@ def setUpData():
                        attrs={'standard_name': 'longitude', 'units': 'degrees_east'})
     latitude = xr.DataArray(lat,
                        attrs={'standard_name': 'latitude', 'units': 'degrees_north'})
-    u1 = -2. * np.sin(lat/2)*units('m/s')
-    v1 = - np.cos(lon)*units('m/s')
+    u1 = -2. * np.sin(np.deg2rad(lat/2))*units('m/s')
+    v1 = - np.cos(np.deg2rad(lon))*units('m/s')
     u1,v1 = np.meshgrid(v1,u1)
     u = xr.DataArray(u1 ,coords=(latitude,longitude),dims=('latitude','longitude'))
 
@@ -53,7 +53,7 @@ def setUpData():
     upsi = upsi*units('m/s')
     vpsi = vpsi*units('m/s')
     recovered_vort = mpcalc.vorticity(upsi,vpsi)
-
+    print(type(recovered_vort))
     dx1 = np.array(dx)
     dy1 = np.array(dy)
     aa = np.max(dx1)
@@ -73,8 +73,8 @@ def setUpDivergence():
                             attrs={'standard_name': 'latitude', 'units': 'degrees_north'})
 
 
-    u1 = - np.cos(lon)*units('m/s')
-    v1 = -2. * np.sin(lat/2)*units('m/s')
+    u1 = - np.cos(np.deg2rad(lon))*units('m/s')
+    v1 = -2. * np.sin(np.deg2rad(lat)/2)*units('m/s')
 
     u1,v1 = np.meshgrid(u1,v1)
 
