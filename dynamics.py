@@ -2,120 +2,121 @@ import numpy as np
 
 # Import the architectural components from your core.py
 # We use BoundingBoxIndices for type-hinting the arguments
-from .core import BoundingBoxIndices
+from core import BoundingBoxIndices,extract_source_data
 
-def prepare_inversion_inputs(masked_field, dx, dy, bb):
-    # Slice the already-masked field using the indices found in step 4
-    y_slice = slice(bb.y_ll, bb.y_ur + 1)
-    x_slice = slice(bb.x_ll, bb.x_ur + 1)
-    
-    f_vals = masked_field.values[y_slice, x_slice]
-    dx_vals = dx.magnitude[y_slice, x_slice]
-    dy_vals = dy.magnitude[y_slice, x_slice]
-    
-    return f_vals * dx_vals * dy_vals, np.mean(dx_vals), np.mean(dy_vals)
 
-def invert_vorticity_to_wind(vort_field, bb_indices, x_indices, y_indices, dx, dy):
-    """
-    Performs the Biot-Savart inversion of relative vorticity into rotational wind.
-    
-    Implements Oertel & Schemm (2021) Equations 8 & 9.
-    Assumes input data is normalized (South-to-North) via GridHandler.
-    
-    Parameters
-    ----------
-    vort_field : ndarray
-        The 2D area-weighted vorticity field (zeta * dA).
-    bb_indices : BoundingBoxIndices
-        The indices of the target domain subset.
-    x_indices, y_indices : ndarray
-        The 2D meshgrids representing the source grid (from core.py).
-    dx, dy : float
-        Grid spacing in meters.
-        
-    Returns
-    -------
-    tuple : (u_psi, v_psi) 2D arrays of rotational wind components.
-    """
-    # Initialize output arrays with the same shape as the target subset
-    # We use a subset-sized array to save memory
-    shape = (bb_indices.y_ur - bb_indices.y_ll + 1, 
-             bb_indices.x_ur - bb_indices.x_ll + 1)
-    
-    u_psi = np.zeros(shape)
-    v_psi = np.zeros(shape)
+def invert_vorticity_os21(vortmask, dx, dy, target, domain):
+    # 1. Helper to strip units/metadata (The "Agnostic Utility")
+    def to_raw(obj):
+        if hasattr(obj, "magnitude"): return obj.magnitude # Strips MetPy units
+        if hasattr(obj, "values"): return obj.values       # Strips Xarray metadata
+        return obj
 
-    # The Nested Inversion (The "Real Deal")
-    # i and j are local indices for the output arrays
-    for i_idx, i_glob in enumerate(range(bb_indices.x_ll, bb_indices.x_ur + 1)):
-        for j_idx, j_glob in enumerate(range(bb_indices.y_ll, bb_indices.y_ur + 1)):
+    # 2. Convert inputs to raw NumPy arrays immediately
+    vort_raw = to_raw(vortmask)
+    dx_raw = to_raw(dx)
+    dy_raw = to_raw(dy)
+
+    # 3. Pass the RAW arrays to your extractor
+    area_vort, x_src, y_src, dx_f, dy_f = extract_source_data(vort_raw, dx_raw, dy_raw, target)
+    
+    # 4. Pre-allocate results using the raw shape
+    upsi = np.zeros_like(vort_raw)
+    vpsi = np.zeros_like(vort_raw)
+
+    # 5. Fast Vectorized Loop
+    for i in range(domain.x_ll, domain.x_ur):
+        for j in range(domain.y_ll, domain.y_ur):
             
-            # Calculate distance: (Target Global Index - Source Mesh) * Spacing
-            xdiff = (i_glob - x_indices) * dx
-            ydiff = (j_glob - y_indices) * dy
+            xdiff = (i - x_src) * dx_f
+            ydiff = (j - y_src) * dy_f
+            rsq = xdiff**2 + ydiff**2
+            
+            # This comparison now works because rsq is raw float, not Pint Quantity
+            mask = (rsq > 1e-6) 
+            inv_rsq = 1.0 / rsq[mask]
+            
+            upsi[j, i] = np.sum(area_vort[mask] * -ydiff[mask] * inv_rsq)
+            vpsi[j, i] = np.sum(area_vort[mask] * xdiff[mask] * inv_rsq)
+
+    return upsi / (2 * np.pi), vpsi / (2 * np.pi)
+
+def invert_divergence_os21(divmask, dx, dy, target, domain):
+    """
+    Performs OS2021 Green's Function Inversion for Divergence (Eq 10 & 11).
+    Agnostic to Xarray/NumPy and unit-safe.
+    """
+    # 1. Helper to strip units/metadata (Same as we used for Vorticity)
+    def to_raw(obj):
+        if hasattr(obj, "magnitude"): return obj.magnitude 
+        if hasattr(obj, "values"): return obj.values       
+        return obj
+
+    # 2. Pre-process inputs to raw NumPy
+    div_raw = to_raw(divmask)
+    dx_raw = to_raw(dx)
+    dy_raw = to_raw(dy)
+
+    # 3. Get pre-calculated strengths (using Divergence)
+    area_div, x_src, y_src, dx_f, dy_f = extract_source_data(div_raw, dx_raw, dy_raw, target)
+    
+    # 4. Pre-allocate results using the raw shape
+    uchi = np.zeros_like(div_raw)
+    vchi = np.zeros_like(div_raw)
+
+    # 5. Vectorized Calculation Loop
+    for i in range(domain.x_ll, domain.x_ur):
+        for j in range(domain.y_ll, domain.y_ur):
+            
+            # Displacement vectors (Target point [i,j] - Source meshgrid [x_src, y_src])
+            xdiff = (i - x_src) * dx_f
+            ydiff = (j - y_src) * dy_f
             rsq = xdiff**2 + ydiff**2
             
             # Singularity mask
             mask = (rsq > 1e-6)
             inv_rsq = 1.0 / rsq[mask]
             
-            # Eq 8: u_psi = -sum(vort * dy / r^2)
-            u_psi[j_idx, i_idx] = -np.sum(vort_field[mask] * ydiff[mask] * inv_rsq)
-            
-            # Eq 9: v_psi = sum(vort * dx / r^2)
-            v_psi[j_idx, i_idx] =  np.sum(vort_field[mask] * xdiff[mask] * inv_rsq)
+            # --- Oertel & Schemm 2021 Eq 10 & 11 ---
+            # Irrotational wind (chi) uses POSITIVE signs for both components:
+            # u_chi = d(chi)/dx,  v_chi = d(chi)/dy
+            uchi[j, i] = np.sum(area_div[mask] * xdiff[mask] * inv_rsq)
+            vchi[j, i] = np.sum(area_div[mask] * ydiff[mask] * inv_rsq)
 
-    # Global Scaling (Efficient Vectorization)
-    scale = 1.0 / (2.0 * np.pi)
-    return u_psi * scale, v_psi * scale
+    scaling = 1 / (2 * np.pi)
+    return uchi * scaling, vchi * scaling
 
-def invert_divergence_to_wind(div_field, bb_indices, x_indices, y_indices, dx, dy):
+def reconstruct_total_induced_wind(vortmask, divmask, dx, dy, target, domain):
     """
-    Performs the Biot-Savart inversion of divergence into divergent wind.
-    
-    Implements Oertel & Schemm (2021) Equations 10 & 11.
-    Assumes input data is normalized (South-to-North) via GridHandler.
-    
-    Parameters
-    ----------
-    div_field : ndarray
-        The 2D area-weighted divergence field (delta * dA).
-    bb_indices : BoundingBoxIndices
-        The indices of the target domain subset.
-    x_indices, y_indices : ndarray
-        The 2D meshgrids representing the source grid (from core.py).
-    dx, dy : float
-        Grid spacing in meters.
-        
-    Returns
-    -------
-    tuple : (u_chi, v_chi) 2D arrays of divergent wind components.
+    Coordinates the dual inversion (Vorticity & Divergence) to get the 
+    total induced wind field within the calculation domain.
     """
-    # Initialize output arrays (matching subset dimensions)
-    shape = (bb_indices.y_ur - bb_indices.y_ll + 1, 
-             bb_indices.x_ur - bb_indices.x_ll + 1)
+    # 1. Perform Rotational Inversion (Eq 8 & 9)
+    u_psi, v_psi = invert_vorticity_os21(vortmask, dx, dy, target, domain)
     
-    u_chi = np.zeros(shape)
-    v_chi = np.zeros(shape)
-
-    # i_glob/j_glob are global indices for distance; i_idx/j_idx for local array storage
-    for i_idx, i_glob in enumerate(range(bb_indices.x_ll, bb_indices.x_ur + 1)):
-        for j_idx, j_glob in enumerate(range(bb_indices.y_ll, bb_indices.y_ur + 1)):
-            
-            # Calculate distance (Target Global Index - Source Mesh)
-            xdiff = (i_glob - x_indices) * dx
-            ydiff = (j_glob - y_indices) * dy
-            rsq = xdiff**2 + ydiff**2
-            
-            mask = (rsq > 1e-6)
-            inv_rsq = 1.0 / rsq[mask]
-            
-            # EQ 10: u_chi = sum(div * dx / r^2)
-            u_chi[j_idx, i_idx] = np.sum(div_field[mask] * xdiff[mask] * inv_rsq)
-            
-            # EQ 11: v_chi = sum(div * dy / r^2)
-            v_chi[j_idx, i_idx] = np.sum(div_field[mask] * ydiff[mask] * inv_rsq)
-
-    # Global Scaling (Efficient Vectorization)
-    scale = 1.0 / (2.0 * np.pi)
-    return u_chi * scale, v_chi * scale
+    # 2. Perform Divergent Inversion (Eq 10 & 11)
+    u_chi, v_chi = invert_divergence_os21(divmask, dx, dy, target, domain)
+    
+    # 3. Sum the components for the Total Induced Wind
+    u_total = u_psi + u_chi
+    v_total = v_psi + v_chi
+    
+    # 4. Wrap back into Xarray for plotting/saving
+    # We use the original coordinates from the vortmask
+    results = xr.Dataset(
+        data_vars={
+            "u_psi": (("latitude", "longitude"), u_psi),
+            "v_psi": (("latitude", "longitude"), v_psi),
+            "u_chi": (("latitude", "longitude"), u_chi),
+            "v_chi": (("latitude", "longitude"), v_chi),
+            "u_total": (("latitude", "longitude"), u_total),
+            "v_total": (("latitude", "longitude"), v_total),
+        },
+        coords=vortmask.coords
+    )
+    
+    # Slice the final dataset to the domain for clean output
+    return results.isel(
+        latitude=slice(domain.y_ll, domain.y_ur),
+        longitude=slice(domain.x_ll, domain.x_ur)
+    )
