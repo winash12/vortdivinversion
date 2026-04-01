@@ -69,7 +69,54 @@ class NumpyGridHandler(GridHandler):
             
         return lats, lons, *fields
 
+def invert_divergence_os21(divmask, dx, dy, target, domain):
+    """
+    Performs OS2021 Green's Function Inversion for Divergence (Eq 10 & 11).
+    Agnostic to Xarray/NumPy and unit-safe.
+    """
+    # 1. Helper to strip units/metadata (Same as we used for Vorticity)
+    def to_raw(obj):
+        if hasattr(obj, "magnitude"): return obj.magnitude 
+        if hasattr(obj, "values"): return obj.values       
+        return obj
 
+    # 2. Pre-process inputs to raw NumPy
+    div_raw = to_raw(divmask)
+    dx_raw = to_raw(dx)
+    dy_raw = to_raw(dy)
+
+    # 3. Get pre-calculated strengths (using Divergence)
+    area_div, x_src, y_src, dx_f, dy_f = extract_source_data(div_raw, dx_raw, dy_raw, target)
+
+    area_vort, x_src, y_src, dx_f, dy_f = extract_source_data_ms(div_raw, dx_raw, dy_raw,
+                                                                 target,ds_meta=divmask)
+
+    
+    # 4. Pre-allocate results using the raw shape
+    uchi = np.zeros_like(div_raw)
+    vchi = np.zeros_like(div_raw)
+
+    # 5. Vectorized Calculation Loop
+    for i in range(domain.x_ll, domain.x_ur):
+        for j in range(domain.y_ll, domain.y_ur):
+            
+            # Displacement vectors (Target point [i,j] - Source meshgrid [x_src, y_src])
+            xdiff = (i - x_src) * dx_f
+            ydiff = (j - y_src) * dy_f
+            rsq = xdiff**2 + ydiff**2
+            
+            # Singularity mask
+            mask = (rsq > 1e-6)
+            inv_rsq = 1.0 / rsq[mask]
+            
+            # --- Oertel & Schemm 2021 Eq 10 & 11 ---
+            # Irrotational wind (chi) uses POSITIVE signs for both components:
+            # u_chi = d(chi)/dx,  v_chi = d(chi)/dy
+            uchi[j, i] = np.sum(area_div[mask] * xdiff[mask] * inv_rsq)
+            vchi[j, i] = np.sum(area_div[mask] * ydiff[mask] * inv_rsq)
+
+    scaling = 1 / (2 * np.pi)
+    return uchi * scaling, vchi * scaling
 class GridHandlerFactory:
     """Dynamic Factory to instantiate the correct GridHandler by name."""
     _handlers = {
@@ -96,7 +143,6 @@ def bounding_box_mask(data, indices: BoundingBoxIndices, fill_value=0.0):
         mask_result = xr.zeros_like(data)
     else:
         mask_result = np.full_like(data, fill_value)
-
     # 2. Define the Slice for Readability
     # Slicing is [South_Index : North_Index, West_Index : East_Index]
     # Indices are guaranteed Small-to-Large by your find_bounding_box_indices
@@ -145,44 +191,48 @@ def find_bounding_box_indices(data, bbox: BoundingBox) -> BoundingBoxIndices:
         x_ur = max(ix1, ix2) + 1
     )
 
+def get_coord(obj, names):
+    """
+    Safely extracts a coordinate array from Xarray or returns None for NumPy.
+    names: list of possible names like ['latitude', 'lat']
+    """
+    if hasattr(obj, "coords"): # It's a DataArray
+        for name in names:
+            if name in obj.coords:
+                return obj.coords[name].values
+    if hasattr(obj, "variables"): # It's a Dataset
+        for name in names:
+            if name in obj.variables:
+                return obj[name].values
+    return None # It's a NumPy array or missing metadata
+
+
 def get_projection_scaling(ds, indices: BoundingBoxIndices):
     """
-    Independent Projection Handler.
-    Detects CRS from CF-attributes (no MetPy) and calculates scale factors.
+    TRUE AGNOSTIC: Handles Dataset, DataArray, or NumPy.
     """
-    ny = indices.y_ur - indices.y_ll
     nx = indices.x_ur - indices.x_ll
+    ny = indices.y_ur - indices.y_ll
 
-    # 1. Try to find CF-Convention grid_mapping
-    # Most professional datasets use a variable to define the CRS
-    crs_var = None
-    for var in ds.variables:
-        if 'grid_mapping_name' in ds[var].attrs:
-            crs_var = ds[var]
-            break
+    # 1. Try to get Latitude Metadata safely
+    lats_full = get_coord(ds, ['latitude', 'lat'])
 
-    if crs_var is not None:
-        # Build the Proj object directly from CF attributes
-        cf_params = crs_var.attrs
-        crs = CRS.from_cf(cf_params)
-        p = Proj(crs)
-        
-        lons = ds.longitude.values[indices.y_ll:indices.y_ur, indices.x_ll:indices.x_ur]
-        lats = ds.latitude.values[indices.y_ll:indices.y_ur, indices.x_ll:indices.x_ur]
-        
-        # Calculate Parallel (k) and Meridional (h) scale factors
-        # These account for Rotated Pole (COSMO) or Lambert (WRF)
-        factors = p.get_factors(lons, lats)
-        return factors.parallel_scale, factors.meridional_scale
+    # 2. Strategy: If metadata exists, do the Math. If not, bypass.
+    if lats_full is not None:
+        try:
+            lats_subset = lats_full[indices.y_ll : indices.y_ur]
+            # mx = 1/cos(phi)
+            mx_1d = 1.0 / np.cos(np.deg2rad(lats_subset))
+            mx = np.repeat(mx_1d[:, np.newaxis], nx, axis=1)
+            my = np.ones_like(mx)
+            return mx, my
+        except Exception:
+            pass # Fall through to Cartesian if slicing fails
 
-    # 2. Fallback for Standard Lat/Lon (GFS / ERA5)
-    # If no CRS is found, we assume Equidistant Cylindrical
-    lats = ds.latitude.values[indices.y_ll:indices.y_ur]
-    mx_1d = 1.0 / np.cos(np.deg2rad(lats))
-    mx = np.repeat(mx_1d[:, np.newaxis], nx, axis=1)
-    my = np.ones_like(mx)
-    
-    return mx, my
+    # 3. PRO FALLBACK: Cartesian (Identity) Scaling
+    # Used if input is pure NumPy or metadata is missing
+    return np.ones((ny, nx)), np.ones((ny, nx))
+
 
 def extract_source_data(vortmask, dx, dy, target: BoundingBoxIndices):
     """
@@ -211,26 +261,39 @@ def extract_source_data(vortmask, dx, dy, target: BoundingBoxIndices):
 
     return area_vort, x_src, y_src, dx_f, dy_f
 
-def extract_source_data_ms(field_mask, dx, dy, target: BoundingBoxIndices):
+def extract_source_data_ms(field_mask, dx, dy, target: BoundingBoxIndices, ds_meta=None):
     """
-    JOSS-compliant extractor: Uses Map Factors to ensure 
-    Area Strength is projection-independent.
+    FIXED: Uses ds_meta for projection info while keeping field_mask for math.
     """
-    # 1. Get raw slices
-    field_f = field_mask.values[target.y_ll:target.y_ur, target.x_ll:target.x_ur]
-    dx_f = dx.magnitude[target.y_ll:target.y_ur, target.x_ll:target.x_ur]
-    dy_f = dy.magnitude[target.y_ll:target.y_ur, target.x_ll:target.x_ur]
+    # 1. Get raw slices (Agnostic check)
+    f_raw = field_mask.values if hasattr(field_mask, "values") else field_mask
+    field_f = f_raw[target.y_ll:target.y_ur, target.x_ll:target.x_ur]
+    
+    # 2. Handle dx/dy (Agnostic for MetPy/NumPy)
+    dx_raw = dx.magnitude if hasattr(dx, "magnitude") else (dx.values if hasattr(dx, "values") else dx)
+    dy_raw = dy.magnitude if hasattr(dy, "magnitude") else (dy.values if hasattr(dy, "values") else dy)
+    dx_f = dx_raw[target.y_ll:target.y_ur, target.x_ll:target.x_ur]
+    dy_f = dy_raw[target.y_ll:target.y_ur, target.x_ll:target.x_ur]
 
-    # 2. Get Map Factors (No hardcoding)
-    mx, my = get_projection_scaling(field_mask, target)
+    # 3. GET MAP FACTORS (Use ds_meta if available, else fallback)
+    # If field_mask is already NumPy, we need the original Xarray (ds_meta) for the CRS
+    meta_source = ds_meta if ds_meta is not None else field_mask
+    mx, my = get_projection_scaling(meta_source, target)
 
-    # 3. AREA STRENGTH (The 'Physical Charge')
-    # We divide by the map factors to convert 'Map Area' to 'True Earth Area'
+    # 4. AREA STRENGTH (The 'Physical Charge')
+    # Correct Math: Divide by Map Factors to get True Earth Area
     area_strength = field_f * (dx_f / mx) * (dy_f / my)
 
+    
     # ... [Coordinate grid logic] ...
-    return area_strength, x_src, y_src, dx_f, dy_f
+    # Create matching coordinate grids for the inversion loop
+    source_y = np.arange(target.y_ll, target.y_ur)
+    source_x = np.arange(target.x_ll, target.x_ur)
+    x_src, y_src = np.meshgrid(source_x, source_y)
 
+
+    return area_strength, x_src, y_src, dx_f, dy_f
+    
 def get_geod_from_ds(ds):
     """
     Extracts the specific ellipsoid/sphere from the dataset's CRS.

@@ -2,7 +2,7 @@ import numpy as np
 
 # Import the architectural components from your core.py
 # We use BoundingBoxIndices for type-hinting the arguments
-from core import BoundingBoxIndices,extract_source_data
+from core import BoundingBoxIndices,extract_source_data,extract_source_data_ms
 
 
 def invert_vorticity_os21(vortmask, dx, dy, target, domain):
@@ -18,8 +18,10 @@ def invert_vorticity_os21(vortmask, dx, dy, target, domain):
     dy_raw = to_raw(dy)
 
     # 3. Pass the RAW arrays to your extractor
-    area_vort, x_src, y_src, dx_f, dy_f = extract_source_data(vort_raw, dx_raw, dy_raw, target)
-    
+    #area_vort, x_src, y_src, dx_f, dy_f = extract_source_data(vort_raw, dx_raw, dy_raw,
+    #                                                          target)
+    area_vort, x_src, y_src, dx_f, dy_f = extract_source_data_ms(vort_raw, dx_raw, dy_raw,
+                                                                 target,ds_meta=vortmask)
     # 4. Pre-allocate results using the raw shape
     upsi = np.zeros_like(vort_raw)
     vpsi = np.zeros_like(vort_raw)
@@ -59,6 +61,10 @@ def invert_divergence_os21(divmask, dx, dy, target, domain):
 
     # 3. Get pre-calculated strengths (using Divergence)
     area_div, x_src, y_src, dx_f, dy_f = extract_source_data(div_raw, dx_raw, dy_raw, target)
+
+    area_vort, x_src, y_src, dx_f, dy_f = extract_source_data_ms(div_raw, dx_raw, dy_raw,
+                                                                 target,ds_meta=divmask)
+
     
     # 4. Pre-allocate results using the raw shape
     uchi = np.zeros_like(div_raw)
