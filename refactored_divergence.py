@@ -5,7 +5,7 @@ from botocore import UNSIGNED
 from botocore.config import Config
 import metpy.calc as mpcalc
 from core import BoundingBox,GridHandlerFactory, find_bounding_box_indices,bounding_box_mask
-from dynamics import invert_vorticity_os21
+from dynamics import invert_vorticity_os21,invert_divergence_os21
 import sys
 import os
 from  datetime import datetime
@@ -18,7 +18,7 @@ from cartopy.feature import NaturalEarthFeature
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 from matplotlib.cm import get_cmap
 
-def get_gfs_variable(run_date, forecast_hour=0, level=850, var_name='u', handler_type="xarray"):
+def get_gfs_variable(run_date, forecast_hour=0, level=200, var_name='u', handler_type="xarray"):
     """
     Downloads and normalizes a SINGLE GFS variable using the Factory pattern.
     """
@@ -35,7 +35,7 @@ def get_gfs_variable(run_date, forecast_hour=0, level=850, var_name='u', handler
         client = boto3.client('s3', config=Config(signature_version=UNSIGNED))
         client.download_file('noaa-gfs-bdp-pds', s3_key, local_filename)
 
-    # 3. Open with specific filters (850 hPa, U or V, etc.)
+    # 3. Open with specific filters (200 hPa, U or V, etc.)
     ds_raw = xr.open_dataset(
         local_filename, 
         engine='cfgrib', 
@@ -66,15 +66,15 @@ def get_gfs_variable(run_date, forecast_hour=0, level=850, var_name='u', handler
 # --- Usage ---
 run_time = datetime(2025, 12, 1, 6)
 
-# Get U at 850 hPa
-u850 = get_gfs_variable(run_time, level=850, var_name='u', handler_type="xarray")
+# Get U at 200 hPa
+u200 = get_gfs_variable(run_time, level=200, var_name='u', handler_type="xarray")
 
-# Get V at 850 hPa
-v850 = get_gfs_variable(run_time, level=850, var_name='v', handler_type="xarray")
-print(f"First Lat: {u850.latitude.values[0]}")  # Should be -90.0
-print(f"Last Lat: {u850.latitude.values[-1]}")  # Should be 90.0
+# Get V at 200 hPa
+v200 = get_gfs_variable(run_time, level=200, var_name='v', handler_type="xarray")
+print(f"First Lat: {u200.latitude.values[0]}")  # Should be -90.0
+print(f"Last Lat: {u200.latitude.values[-1]}")  # Should be 90.0
 
-vort850 = mpcalc.vorticity(u850, v850)
+div200 = mpcalc.divergence(u200, v200)
 
 # 1. Expand the 'Source' box (Vortex ROI)
 # This captures the full vorticity/divergence 'charge' to avoid the 22N clipping.
@@ -93,26 +93,27 @@ domain_roi = BoundingBox(
     min_lon=65.0,  # Shows more of the Arabian Sea for context
     max_lon=100.0  # Shows the full Andaman Sea/Myanmar coast
 )
-vortex_indices = find_bounding_box_indices(vort850, vortex_roi)
-domain_indices = find_bounding_box_indices(vort850, domain_roi)
+
+vortex_indices = find_bounding_box_indices(div200, vortex_roi)
+domain_indices = find_bounding_box_indices(div200, domain_roi)
 
 # 2. ISOLATE THE ANOMALY (The 'Source')
 # Ensure bounding_box_mask returns the FULL grid size, not a crop.
 # This keeps index [100, 200] in the same physical place.
-vort_anomaly = bounding_box_mask(vort850, vortex_indices, fill_value=0.0)
+div_anomaly = bounding_box_mask(div200, vortex_indices, fill_value=0.0)
 
 
 # 3. CALCULATE METRICS
 # Use the full coordinates so dx/dy match the full grid indices
-dx, dy = mpcalc.lat_lon_grid_deltas(vort850.longitude, vort850.latitude)
+dx, dy = mpcalc.lat_lon_grid_deltas(div200.longitude, div200.latitude)
 
 # 4. INVOKE INVERSION
 # Inside invert_vorticity_os21:
 # - extract_source_data uses 'vortex_indices' to slice the anomaly
 # - the loops use 'domain_indices' to calculate the wind in the plot area
 starttime = time.time()
-upsi, vpsi = invert_vorticity_os21(
-    vortmask=vort_anomaly, 
+upsi, vpsi = invert_divergence_os21(
+    divmask=div_anomaly, 
     dx=dx, 
     dy=dy, 
     target=vortex_indices, 
@@ -123,7 +124,7 @@ print(f"Vectorization done in {time.time()-starttime:.2f}s")
 # Now u_psi and v_psi are the cloud-induced wind components in m/s
 nd_spd_raw = np.sqrt(upsi**2 + vpsi**2)
 
-valid_time = pd.to_datetime(v850.valid_time.values)
+valid_time = pd.to_datetime(v200.valid_time.values)
 date_str = valid_time.strftime('%H UTC %d %B %Y')
 
 # Calculate dynamic levels for the colorbar
@@ -136,9 +137,9 @@ ax = plt.axes(projection=crs.PlateCarree())
 
 nd_spd = xr.DataArray(
     data=nd_spd_raw,
-    coords=vort850.coords,
-    dims=vort850.dims,
-    name="non_divergent_speed"
+    coords=div200.coords,
+    dims=div200.dims,
+    name="irrotational_speed"
 )
 
 # --- 3. BACKGROUND PLOT (Wind Magnitude) ---
@@ -150,7 +151,7 @@ plot = nd_spd.plot(
     transform=crs.PlateCarree(),
     add_colorbar=True,
     cbar_kwargs={
-        'label': 'Non-divergent Wind Speed ($m\ s^{-1}$)',
+        'label': 'Irrotational Wind Speed ($m\ s^{-1}$)',
         'shrink': 0.8,
         'pad': 0.05,
         'aspect': 30,
@@ -164,8 +165,8 @@ skip = 6
 # Slicing the 2D arrays: [y_slice, x_slice]
 sub_u = upsi[::skip, ::skip]
 sub_v = vpsi[::skip, ::skip]
-lats = vort850.latitude.values
-lons = vort850.longitude.values
+lats = div200.latitude.values
+lons = div200.longitude.values
 sub_lons = lons[::skip]
 sub_lats = lats[::skip]
 
@@ -214,14 +215,14 @@ gl.ylabel_style = {'size': 11, 'color': 'black'}
 
 # --- 7. DYNAMIC TITLE & OUTPUT ---
 plt.title(
-    f"GFS 850 hPa Non-Divergent Wind Field\nValid: {date_str}", 
+    f"GFS 200 hPa Divergent Wind Field\nValid: {date_str}", 
     fontsize=15, 
     fontweight='bold', 
     pad=25
 )
 
 # Save with a high DPI for professional quality
-plt.savefig('non_divergent_wind_final.png', dpi=300, bbox_inches='tight')
+plt.savefig('divergent_wind_final.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 
