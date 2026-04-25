@@ -69,54 +69,6 @@ class NumpyGridHandler(GridHandler):
             
         return lats, lons, *fields
 
-def invert_divergence_os21(divmask, dx, dy, target, domain):
-    """
-    Performs OS2021 Green's Function Inversion for Divergence (Eq 10 & 11).
-    Agnostic to Xarray/NumPy and unit-safe.
-    """
-    # 1. Helper to strip units/metadata (Same as we used for Vorticity)
-    def to_raw(obj):
-        if hasattr(obj, "magnitude"): return obj.magnitude 
-        if hasattr(obj, "values"): return obj.values       
-        return obj
-
-    # 2. Pre-process inputs to raw NumPy
-    div_raw = to_raw(divmask)
-    dx_raw = to_raw(dx)
-    dy_raw = to_raw(dy)
-
-    # 3. Get pre-calculated strengths (using Divergence)
-    area_div, x_src, y_src, dx_f, dy_f = extract_source_data(div_raw, dx_raw, dy_raw, target)
-
-    area_vort, x_src, y_src, dx_f, dy_f = extract_source_data_ms(div_raw, dx_raw, dy_raw,
-                                                                 target,ds_meta=divmask)
-
-    
-    # 4. Pre-allocate results using the raw shape
-    uchi = np.zeros_like(div_raw)
-    vchi = np.zeros_like(div_raw)
-
-    # 5. Vectorized Calculation Loop
-    for i in range(domain.x_ll, domain.x_ur):
-        for j in range(domain.y_ll, domain.y_ur):
-            
-            # Displacement vectors (Target point [i,j] - Source meshgrid [x_src, y_src])
-            xdiff = (i - x_src) * dx_f
-            ydiff = (j - y_src) * dy_f
-            rsq = xdiff**2 + ydiff**2
-            
-            # Singularity mask
-            mask = (rsq > 1e-6)
-            inv_rsq = 1.0 / rsq[mask]
-            
-            # --- Oertel & Schemm 2021 Eq 10 & 11 ---
-            # Irrotational wind (chi) uses POSITIVE signs for both components:
-            # u_chi = d(chi)/dx,  v_chi = d(chi)/dy
-            uchi[j, i] = np.sum(area_div[mask] * xdiff[mask] * inv_rsq)
-            vchi[j, i] = np.sum(area_div[mask] * ydiff[mask] * inv_rsq)
-
-    scaling = 1 / (2 * np.pi)
-    return uchi * scaling, vchi * scaling
 class GridHandlerFactory:
     """Dynamic Factory to instantiate the correct GridHandler by name."""
     _handlers = {
@@ -282,7 +234,7 @@ def extract_source_data_ms(field_mask, dx, dy, target: BoundingBoxIndices, ds_me
 
     # 4. AREA STRENGTH (The 'Physical Charge')
     # Correct Math: Divide by Map Factors to get True Earth Area
-    area_strength = field_f * (dx_f / mx) * (dy_f / my)
+    area_strength = field_f * (dx_f * mx) * (dy_f * my)
 
     
     # ... [Coordinate grid logic] ...
@@ -290,7 +242,6 @@ def extract_source_data_ms(field_mask, dx, dy, target: BoundingBoxIndices, ds_me
     source_y = np.arange(target.y_ll, target.y_ur)
     source_x = np.arange(target.x_ll, target.x_ur)
     x_src, y_src = np.meshgrid(source_x, source_y)
-
 
     return area_strength, x_src, y_src, dx_f, dy_f
     
@@ -330,3 +281,19 @@ def calculate_metric_deltas(lons, lats, geod: Geod):
                         lons[:, 1:],  lats[:, 1:])
     
     return dx, dy
+
+def coriolis_parameter(lat_degrees):
+    """
+    Calculates the Coriolis parameter (f) manually for a given latitude.
+    Input latitude must be in degrees.
+    """
+    # 1. Earth's angular velocity (rad/s)
+    omega = 7.2921e-5 
+    
+    # 2. Convert latitude from degrees to radians
+    lat_radians = np.deg2rad(lat_degrees)
+    
+    # 3. Apply the formula: 2 * omega * sin(latitude)
+    f = 2 * omega * np.sin(lat_radians)
+    
+    return f
